@@ -13,6 +13,7 @@ full error context to Claude (or any LLM) for diagnosis.
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![AWS read-only](https://img.shields.io/badge/AWS-read--only-orange)
 ![No server needed](https://img.shields.io/badge/server-not%20needed-brightgreen)
+![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)
 
 🇺🇸 English · [🇧🇷 Português](README.pt-BR.md)
 
@@ -29,7 +30,11 @@ overkill for many teams. CloudWatch already has the logs — it just doesn't mak
 
 CloudWatch Monitor turns your existing CloudWatch Logs into an error dashboard you can leave open on a
 second screen. **Nothing is installed in AWS**, there's no server to host, and it only needs
-**read-only** credentials. Your data stays on your computer.
+**read-only** credentials.
+
+> 🔒 **Your data never leaves your machine.** No external servers, no telemetry, no analytics, no
+> sign-up. The only network connection the monitor makes is to the **AWS API, in your own account**,
+> to read your logs. See [Privacy](#-privacy--your-data-stays-with-you).
 
 ## Features
 
@@ -127,7 +132,7 @@ first-run lookback, local history retention, which log groups to watch, and the 
 | Python | 3.10+ (installed by the launcher if missing) |
 | AWS CLI | optional (SSO only) |
 
-No database server, Docker or Node.js — SQLite ships with Python. The UI loads Chart.js from a CDN.
+No database server, Docker or Node.js — SQLite ships with Python, and the chart library (Chart.js) is bundled in the project.
 
 ### IAM permissions
 
@@ -216,14 +221,29 @@ Each result has **Open issue**, **View context** (the whole Lambda invocation or
 **✨ Generate Prompt**, AWS Console link and copy. Options: period, log-group filter, whole word,
 case-sensitive and regex.
 
-## Security & privacy
+## 🔒 Privacy — your data stays with you
 
-- **Read-only**: the app never writes anything to AWS.
-- **Local only**: the dashboard binds to `127.0.0.1` — it is not reachable from the network.
-- **Credentials** stay in the standard `~/.aws` files; the project only stores the *profile name*.
-  `.env` is git-ignored.
-- **Nothing is sent to any AI automatically** — a prompt only leaves your machine if you copy and paste it.
-  Tokens, passwords, e-mails, CPF/CNPJ and connection strings are masked by default.
+**No information is sent to any external server.** Concretely:
+
+| | |
+|---|---|
+| 🚫 **No third-party servers** | no backend, no telemetry, no analytics, no tracking, no crash reports, no account or sign-up |
+| ☁️ **Only your own AWS** | the monitor's single network destination is the **AWS API of your account**, with your credentials, to *read* logs and alarms (read-only — it never writes to AWS) |
+| 💻 **Everything local** | the dashboard is served from `127.0.0.1` (not reachable from the network); every file it loads — including the chart library — comes from the project folder, no CDN |
+| 🗄️ **Data on your disk** | collected errors live in a SQLite file in your user folder (see the database location table above) |
+| 🔑 **Credentials untouched** | they stay in the standard `~/.aws` files; the project only stores the *profile name* (`.env`, git-ignored) |
+| 🤖 **No AI calls** | nothing is ever sent to Claude or any LLM — a prompt only leaves your machine if **you** copy and paste it. Tokens, passwords, e-mails, CPF/CNPJ and connection strings are masked by default |
+
+The only other network access happens **once, at install time**: the launcher may download Python,
+`boto3` (PyPI) and the AWS CLI from their official sources (winget, Homebrew, your Linux package
+manager, awscli.amazonaws.com). No data of yours is sent. Clicking an *AWS Console* link simply opens
+the AWS console in your browser.
+
+### Security
+
+- CSRF protection: the local API rejects requests coming from other websites.
+- Read-only IAM policy; prefer a dedicated IAM user or SSO, and rotate keys.
+- Repository protected with secret scanning + push protection and Dependabot.
 
 ## Start with your computer (optional)
 
@@ -244,7 +264,6 @@ Run the launcher manually once first so the wizard can create the `.env`.
 | Expired SSO session | `aws sso login --profile YOUR_PROFILE` |
 | Port in use | change `MONITOR_PORT` in `.env` |
 | Empty dashboard | wait for the first collection (“collection ok” at the top) or widen the period |
-| Charts don't render | the browser must reach `cdn.jsdelivr.net` |
 | Linux: `ensurepip is not available` | `sudo apt install python3-venv` (the launcher offers it) |
 
 ## How it works
@@ -265,7 +284,7 @@ fingerprint.py             error classification and grouping
 prompt.py                  prompt builder (with secret masking)
 demo.py                    fictional data for demo mode
 db.py · config.py          SQLite schema · configuration
-web/                       dashboard (vanilla HTML/CSS/JS + Chart.js)
+web/                       dashboard (vanilla HTML/CSS/JS + bundled Chart.js, MIT)
 ```
 
 ## Contributing

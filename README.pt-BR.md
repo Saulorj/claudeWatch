@@ -13,6 +13,7 @@ o contexto completo do erro para o Claude (ou outra IA) diagnosticar.
 ![Plataformas](https://img.shields.io/badge/plataforma-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![AWS somente leitura](https://img.shields.io/badge/AWS-somente%20leitura-orange)
 ![Sem servidor](https://img.shields.io/badge/servidor-n%C3%A3o%20precisa-brightgreen)
+![Sem telemetria](https://img.shields.io/badge/telemetria-nenhuma-brightgreen)
 
 [🇺🇸 English](README.md) · 🇧🇷 Português
 
@@ -29,7 +30,11 @@ Pagar uma plataforma completa de observabilidade só para *ver os erros* das sua
 
 O CloudWatch Monitor transforma os logs que você já tem num painel de erros para deixar aberto numa
 segunda tela. **Nada é instalado na AWS**, não há servidor para hospedar e só precisa de credenciais
-**somente leitura**. Seus dados ficam no seu computador.
+**somente leitura**.
+
+> 🔒 **Seus dados nunca saem da sua máquina.** Nenhum servidor externo, nenhuma telemetria, nenhum
+> analytics, nenhum cadastro. A única conexão de rede que o monitor faz é com a **API da AWS, na sua
+> própria conta**, para ler seus logs. Veja [Privacidade](#-privacidade--seus-dados-ficam-com-você).
 
 ## Funcionalidades
 
@@ -127,8 +132,8 @@ quanto buscar na 1ª vez, dias de histórico local, quais log groups monitorar e
 | Python | 3.10+ (o inicializador instala se faltar) |
 | AWS CLI | opcional (só SSO) |
 
-Não precisa de servidor de banco, Docker nem Node.js — o SQLite vem com o Python. O painel carrega o
-Chart.js de um CDN.
+Não precisa de servidor de banco, Docker nem Node.js — o SQLite vem com o Python, e a biblioteca de
+gráficos (Chart.js) vem dentro do projeto.
 
 ### Permissões IAM
 
@@ -235,14 +240,29 @@ SQLite em uso.
 
 ---
 
-## Segurança e privacidade
+## 🔒 Privacidade — seus dados ficam com você
 
-- **Somente leitura**: o app nunca grava nada na AWS.
-- **Só local**: o painel escuta em `127.0.0.1` — não fica acessível na rede.
-- **Credenciais** ficam nos arquivos padrão `~/.aws`; o projeto guarda só o *nome* do profile.
-  O `.env` é ignorado pelo git.
-- **Nada vai para uma IA automaticamente** — o prompt só sai da sua máquina se você copiar e colar.
-  Tokens, senhas, e-mails, CPF/CNPJ e strings de conexão são mascarados por padrão.
+**Nenhuma informação é enviada para nenhum servidor externo.** Na prática:
+
+| | |
+|---|---|
+| 🚫 **Nenhum servidor de terceiros** | sem backend, sem telemetria, sem analytics, sem rastreamento, sem relatório de erros, sem conta ou cadastro |
+| ☁️ **Só a sua AWS** | o único destino de rede do monitor é a **API da AWS da sua conta**, com as suas credenciais, para *ler* logs e alarmes (somente leitura — nunca grava nada na AWS) |
+| 💻 **Tudo local** | o painel é servido em `127.0.0.1` (não fica acessível na rede); todo arquivo que ele carrega — inclusive a biblioteca de gráficos — vem da pasta do projeto, sem CDN |
+| 🗄️ **Dados no seu disco** | os erros coletados ficam num arquivo SQLite na sua pasta de usuário (veja a tabela de local do banco acima) |
+| 🔑 **Credenciais intocadas** | ficam nos arquivos padrão `~/.aws`; o projeto guarda só o *nome* do profile (`.env`, ignorado pelo git) |
+| 🤖 **Nenhuma chamada a IA** | nada é enviado ao Claude ou a outra IA — o prompt só sai da sua máquina se **você** copiar e colar. Tokens, senhas, e-mails, CPF/CNPJ e strings de conexão são mascarados por padrão |
+
+O único outro acesso à rede acontece **uma vez, na instalação**: o inicializador pode baixar o Python,
+o `boto3` (PyPI) e o AWS CLI das fontes oficiais (winget, Homebrew, gerenciador de pacotes do Linux,
+awscli.amazonaws.com). Nenhum dado seu é enviado. Clicar num link *AWS Console* apenas abre o console
+da AWS no seu navegador.
+
+### Segurança
+
+- Proteção contra CSRF: a API local recusa requisições vindas de outros sites.
+- Política IAM somente leitura; prefira um usuário IAM dedicado ou SSO, e troque as chaves periodicamente.
+- Repositório protegido com secret scanning + push protection e Dependabot.
 
 ## Iniciar junto com o computador (opcional)
 
@@ -307,7 +327,6 @@ journalctl --user -u cloudwatch-monitor -f     # ver o log
 | Sessão SSO expirada | `aws sso login --profile SEU_PROFILE` |
 | Porta ocupada | mude `MONITOR_PORT` no `.env` |
 | Painel vazio | aguarde a 1ª coleta (“coleta ok” no topo) ou aumente o período |
-| Gráficos não aparecem | o navegador precisa acessar `cdn.jsdelivr.net` |
 | Python não encontrado após instalar | feche e abra o terminal e rode o inicializador de novo |
 | Linux: `ensurepip is not available` | `sudo apt install python3-venv` (o inicializador oferece) |
 
@@ -330,7 +349,7 @@ fingerprint.py             classificação e agrupamento de erros
 prompt.py                  gerador de prompts (com mascaramento)
 demo.py                    dados fictícios do modo demonstração
 db.py · config.py          banco SQLite · configuração
-web/                       painel (HTML/CSS/JS puro + Chart.js)
+web/                       painel (HTML/CSS/JS puro + Chart.js incluso, MIT)
 ```
 
 ## Contribuindo
