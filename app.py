@@ -177,6 +177,8 @@ SEARCH_RANGES = {"15m": 15 * 60_000, "1h": 3_600_000, "6h": 6 * 3_600_000, "24h"
 
 
 def api_search(conn, body):
+    """scope="errors" (padrão): texto completo dos erros já coletados, no banco local — instantâneo e sem custo.
+    scope="all": todos os logs na AWS via Logs Insights (pode gerar custo)."""
     text = (body.get("text") or "").strip()
     if len(text) < 2:
         raise ValueError("Digite pelo menos 2 caracteres para buscar")
@@ -188,42 +190,58 @@ def api_search(conn, body):
     if start >= end:
         raise ValueError("O início precisa ser antes do fim")
     t0 = time.time()
-    if collector is None:  # modo demonstração: busca no banco local
-        result = demo_search(conn, text, start, end, body)
-        result.update(start=start, end=end, elapsed_s=round(time.time() - t0, 1))
-        return result
-    try:
-        result = collector.search(conn, text, start, end, regex=bool(body.get("regex")), case=bool(body.get("case")),
-                                  word=bool(body.get("word")), group_filter=(body.get("group") or "").strip())
-    except re.error as exc:
-        raise ValueError(f"Regex inválida: {exc}")
+    if body.get("scope") != "all" or collector is None:  # modo demonstração não acessa a AWS
+        result = local_search(conn, text, start, end, body)
+    else:
+        try:
+            result = collector.search(conn, text, start, end, regex=bool(body.get("regex")),
+                                      case=bool(body.get("case")), word=bool(body.get("word")),
+                                      group_filter=(body.get("group") or "").strip())
+        except re.error as exc:
+            raise ValueError(f"Regex inválida: {exc}")
+        result["scope"] = "all"
     result.update(start=start, end=end, elapsed_s=round(time.time() - t0, 1))
     return result
 
 
-def demo_search(conn, text, start, end, body):
+LOCAL_SEARCH_MAX_ITEMS = 300
+
+
+def local_search(conn, text, start, end, body):
+    """Busca no texto completo dos erros guardados no SQLite (não acessa a AWS)."""
     flags = 0 if body.get("case") else re.IGNORECASE
     src = text if body.get("regex") else re.escape(text)
     if body.get("word"):
-        src = rf"(?:{src})"
+        src = r"\b(?:" + src + r")\b"
     try:
         rx = re.compile(src, flags)
     except re.error as exc:
         raise ValueError(f"Regex inválida: {exc}")
-    group_filter = (body.get("group") or "").lower()
+    sql = ("SELECT e.ts, e.log_group, e.service, e.log_stream, e.message, e.fingerprint, i.title AS issue_title, "
+           "i.status AS issue_status FROM events e JOIN issues i ON i.fingerprint = e.fingerprint "
+           "WHERE e.ts BETWEEN ? AND ?")
+    args = [start, end]
+    # Pré-filtro no SQLite (LIKE já ignora maiúsculas em ASCII); a regex confirma depois
+    if not body.get("regex") and text.isascii():
+        like = "%" + text.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
+        sql += " AND (e.message LIKE ? ESCAPE '!' OR e.log_group LIKE ? ESCAPE '!')"
+        args += [like, like]
+    group_filter = (body.get("group") or "").strip().lower()
     items, by_group = [], {}
-    for r in conn.execute("SELECT ts, log_group, service, log_stream, message FROM events WHERE ts BETWEEN ? AND ? "
-                          "ORDER BY ts DESC", (start, end)):
+    for r in conn.execute(sql + " ORDER BY e.ts DESC", args):
         if group_filter and group_filter not in r["log_group"].lower():
             continue
-        if rx.search(r["message"]):
+        # procura no texto do erro e no nome do serviço/log group (ex.: "rpa" acha os erros das Lambdas rpa-*)
+        if rx.search(r["message"]) or rx.search(r["log_group"]):
             by_group[r["log_group"]] = by_group.get(r["log_group"], 0) + 1
-            if len(items) < 300:
+            if len(items) < LOCAL_SEARCH_MAX_ITEMS:
                 items.append(dict(r))
     groups = sorted(({"log_group": g, "service": fp.service_of(g), "kind": fp.kind_of(g), "n": n}
                      for g, n in by_group.items()), key=lambda x: -x["n"])
-    searched = conn.execute("SELECT COUNT(*) FROM log_groups").fetchone()[0]
-    return {"items": items, "groups": groups, "total": sum(by_group.values()), "groups_searched": searched, "errors": []}
+    searched = conn.execute("SELECT COUNT(DISTINCT log_group) FROM events WHERE ts BETWEEN ? AND ?",
+                            (start, end)).fetchone()[0]
+    return {"items": items, "groups": groups, "total": sum(by_group.values()), "groups_searched": searched,
+            "errors": [], "scope": "errors"}
 
 
 def api_issues_new(conn, qs):

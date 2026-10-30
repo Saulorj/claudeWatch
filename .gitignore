@@ -229,3 +229,7 @@ __marimo__/
 # gerados localmente pelo assistente
 iam-policy.json
 *.pem
+
+# perfis de navegador / temporários de testes (nunca versionar)
+**/prof*/
+.shots-profile/

@@ -40,7 +40,7 @@ segunda tela. **Nada é instalado na AWS**, não há servidor para hospedar e s�
 | 📊 **Gráficos interativos** | Erros no tempo por serviço, serviços com mais erros, categorias. Clique na barra ou na legenda para filtrar; período de 1h a 30 dias |
 | 🚨 **Alarmes do CloudWatch** | Mostra o estado (OK / ALARME / sem dados) dos alarmes que já existem na conta |
 | ✨ **Gerar Prompt** | Monta um prompt de diagnóstico pronto para colar: erro completo, a **invocação inteira da Lambda** (ou as linhas ao redor no container), estatísticas e erros relacionados. Dados sensíveis mascarados |
-| 🔎 **Busca nos logs** | Procure qualquer texto (id de pedido, e-mail, código de erro) em todos os log groups e veja qual serviço o gerou, com contexto |
+| 🔎 **Busca** | Instantânea e sem custo no texto completo dos erros coletados — ou, marcando uma caixa, em **todas** as linhas de log na AWS para achar de onde veio um id, pedido, e-mail ou código de erro |
 | 🖼 **Relatório PNG** | Um clique exporta KPIs, gráficos, alarmes e os principais erros com mensagens — ótimo para o chat da equipe ou um ticket |
 | 🔔 **Notificações** | Aviso do sistema em issue nova ou regressão |
 | ✅ **Fluxo de trabalho** | Resolver (reabre como *Regressão* se voltar) ou Ignorar (ruído conhecido) |
@@ -211,9 +211,16 @@ SQLite em uso.
   novo para limpar. O filtro ativo aparece em destaque.
 - **Issues**: clique para ver o log completo, as ocorrências e as ações **✨ Gerar Prompt**,
   **Resolver**, **Ignorar** e **AWS Console**.
-- **🔎 Busca**: opções de período (15 min a 30 dias), log groups contendo um trecho do nome, palavra
-  inteira (`387` não acha `13870`), maiúsculas e regex. Cada resultado tem **Ver contexto**,
-  **✨ Gerar Prompt**, AWS Console e copiar.
+- **🔎 Busca** (tecla `/`), com dois escopos:
+
+  | Escopo | Onde | Velocidade | Custo |
+  |---|---|---|---|
+  | **Erros coletados** (padrão) | texto completo dos erros guardados localmente + nome do serviço/log group | instantânea | grátis |
+  | **Todos os logs (AWS)** — caixa de seleção | **todas** as linhas de todos os log groups, via Logs Insights | 5 s a 2 min | ~US$ 0,005 por GB varrido (a tela avisa) |
+
+  Opções: período, log groups contendo um trecho do nome, palavra inteira (`387` não acha `13870`),
+  maiúsculas e regex. Cada resultado tem **Abrir issue**, **Ver contexto**, **✨ Gerar Prompt**,
+  AWS Console e copiar.
 - **🖼 Gerar relatório**: baixa um PNG com o que está na tela (respeitando os filtros).
 - **Alarmes**: os alarmes já existentes na conta (5xx, latência, fila de erro…); o monitor só lê o estado.
 

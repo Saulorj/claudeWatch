@@ -3,6 +3,8 @@
 
 const search = { result: null, groupFilter: "", regex: null, text: "", abort: null, timer: null };
 
+const AWS_BUTTON = ` <button type="button" class="chip" id="searchAwsBtn" title="Pode gerar custos no CloudWatch Logs Insights">🔎 Buscar em todos os logs (AWS)</button>`;
+
 function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 function buildHighlighter(text, { regex, word, case: matchCase }) {
@@ -39,6 +41,7 @@ async function runSearch(e) {
   const body = {
     text: f.elements.text.value.trim(), range: f.elements.range.value, group: f.elements.group.value.trim(),
     word: f.elements.word.checked, case: f.elements.case.checked, regex: f.elements.regex.checked,
+    scope: f.elements.aws.checked ? "all" : "errors",   // padrão: só os erros coletados (local, sem custo)
   };
   const status = $("searchStatus");
   if (body.text.length < 2) { status.className = "search-status error"; status.textContent = "Digite pelo menos 2 caracteres."; return; }
@@ -50,7 +53,9 @@ async function runSearch(e) {
   const t0 = Date.now();
   const groupsHint = state.status_?.groups_monitored ? `${state.status_.groups_monitored} log groups` : "todos os log groups";
   status.className = "search-status";
-  const tick = () => { status.innerHTML = `<span class="spin">◌</span>Buscando “${esc(body.text)}” em ${groupsHint}… ${Math.round((Date.now() - t0) / 1000)}s (períodos longos podem levar 1–2 min)`; };
+  const where = body.scope === "all" ? `em todos os logs da AWS (${groupsHint})` : "nos erros coletados";
+  const slow = body.scope === "all" ? " (períodos longos podem levar 1–2 min)" : "";
+  const tick = () => { status.innerHTML = `<span class="spin">◌</span>Buscando “${esc(body.text)}” ${where}… ${Math.round((Date.now() - t0) / 1000)}s${slow}`; };
   tick();
   search.timer = setInterval(tick, 1000);
   $("searchGo").disabled = true;
@@ -89,16 +94,20 @@ function renderSearch() {
       status.className = "search-status error";
       status.innerHTML = `A busca falhou em ${r.errors.length} lote(s) de log groups: ${esc(r.errors[0])}`;
     } else {
-      status.innerHTML = `Nada encontrado para “<strong>${esc(search.text)}</strong>” (${period}, ${r.groups_searched} log groups, ${r.elapsed_s}s).` +
-        (active.length
-          ? ` Opções ativas: ${active.join(", ")}. <button type="button" class="chip" id="clearSearchOpts">limpar opções e buscar de novo</button>`
-          : " Tente um período maior.");
+      const where = r.scope === "all" ? `em todos os logs da AWS (${period}, ${r.groups_searched} log groups, ${r.elapsed_s}s)`
+        : `nos erros coletados (${period})`;
+      status.innerHTML = `Nada encontrado para “<strong>${esc(search.text)}</strong>” ${where}.` +
+        (active.length ? ` Opções ativas: ${active.join(", ")}. <button type="button" class="chip" id="clearSearchOpts">limpar opções e buscar de novo</button>` : "") +
+        (r.scope !== "all" ? AWS_BUTTON : active.length ? "" : " Tente um período maior.");
     }
     $("searchResults").classList.add("hidden");
   } else {
-    status.innerHTML = `<strong>${nf.format(r.total)}</strong> ocorrência(s) em <strong>${r.groups.length}</strong> log group(s) · ${period} · ${r.elapsed_s}s` +
-      (r.total > shown ? ` · mostrando as ${shown} mais recentes` : "") +
-      (r.errors.length ? ` · <span class="muted">⚠ parte dos grupos falhou: ${esc(r.errors[0])}</span>` : "");
+    status.innerHTML = r.scope === "all"
+      ? `<strong>${nf.format(r.total)}</strong> ocorrência(s) em todos os logs · <strong>${r.groups.length}</strong> log group(s) · ${period} · ${r.elapsed_s}s` +
+        (r.total > shown ? ` · mostrando as ${shown} mais recentes` : "") +
+        (r.errors.length ? ` · <span class="muted">⚠ parte dos grupos falhou: ${esc(r.errors[0])}</span>` : "")
+      : `<strong>${nf.format(r.total)}</strong> erro(s) coletado(s) com “${esc(search.text)}” em <strong>${r.groups.length}</strong> serviço(s) · ${period}` +
+        (r.total > shown ? ` · mostrando os ${shown} mais recentes` : "") + AWS_BUTTON.replace("Buscar em", "Buscar também em");
     $("searchResults").classList.remove("hidden");
   }
 
@@ -120,6 +129,7 @@ function renderSearch() {
       <div class="sr-msg">${highlight(it.message, search.regex)}</div>
       <div class="sr-actions">
         <button class="btn" data-act="context">📜 Ver contexto</button>
+        ${it.fingerprint ? `<button class="btn" data-act="issue">🧩 Abrir issue</button>` : ""}
         <button class="btn primary" data-act="prompt">✨ Gerar Prompt</button>
         <a class="btn" target="_blank" rel="noopener" href="${esc(consoleUrl(it.log_group, it.log_stream))}">AWS Console ↗</a>
         <button class="btn" data-act="copy">📋 Copiar linha</button>
@@ -165,6 +175,10 @@ function bindSearch() {
     const it = search.result.items[Number(li.dataset.i)];
     const act = e.target.closest("[data-act]")?.dataset.act;
     if (act === "context") return showSearchContext(li, it);
+    if (act === "issue") {
+      $("searchModal").classList.remove("show");
+      return loadIssue(it.fingerprint);
+    }
     if (act === "prompt") return searchPrompt(it);
     if (act === "copy") {
       try { await navigator.clipboard.writeText(it.message); toast("Linha copiada.", "good"); } catch { toast("Não consegui copiar.", "critical"); }
@@ -180,7 +194,13 @@ function bindSearch() {
       openSearch();
     }
   });
+  $("searchAws").addEventListener("change", (e) => $("awsWarning").classList.toggle("hidden", !e.target.checked));
   $("searchStatus").addEventListener("click", (e) => {
+    if (e.target.id === "searchAwsBtn") {
+      $("searchAws").checked = true;
+      $("awsWarning").classList.remove("hidden");
+      return runSearch();
+    }
     if (e.target.id !== "clearSearchOpts") return;
     const f = $("searchForm").elements;
     f.group.value = "";

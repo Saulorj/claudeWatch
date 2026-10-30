@@ -40,7 +40,7 @@ second screen. **Nothing is installed in AWS**, there's no server to host, and i
 | 📊 **Interactive charts** | Errors over time by service, top services, categories. Click a bar or legend to filter; period from 1h to 30 days |
 | 🚨 **CloudWatch alarms** | Shows the state (OK / ALARM / no data) of the alarms already in your account |
 | ✨ **Generate Prompt** | Builds a ready-to-paste diagnosis prompt: full error, the **entire Lambda invocation** (or surrounding container lines), stats and related errors. Secrets masked by default |
-| 🔎 **Log search** | Find any text (an order id, an email, an error code) in every log group and see which service produced it, with context |
+| 🔎 **Search** | Instant, free search in the full text of collected errors — or, with one checkbox, in **every** log line on AWS to find where an order id, e-mail or error code came from |
 | 🖼 **PNG report** | One click exports KPIs, charts, alarms and top errors with messages — great for chat or tickets |
 | 🔔 **Notifications** | Desktop notification for new issues and regressions |
 | ✅ **Workflow** | Resolve (reopens as *Regression* if it comes back) or Ignore (known noise) |
@@ -202,6 +202,19 @@ It lives outside the project folder on purpose: OneDrive, Dropbox and iCloud loc
 files in use.
 
 ---
+
+## Search
+
+The 🔎 button (or the `/` key) opens the search, with two scopes:
+
+| Scope | Where | Speed | Cost |
+|---|---|---|---|
+| **Collected errors** (default) | full text of the errors stored locally + service/log group name | instant | free |
+| **All logs (AWS)** — checkbox | **every** log line of every log group, via Logs Insights | 5 s – 2 min | ~US$ 0.005 per GB scanned (a warning is shown) |
+
+Each result has **Open issue**, **View context** (the whole Lambda invocation or surrounding lines),
+**✨ Generate Prompt**, AWS Console link and copy. Options: period, log-group filter, whole word,
+case-sensitive and regex.
 
 ## Security & privacy
 

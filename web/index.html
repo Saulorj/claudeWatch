@@ -242,8 +242,8 @@
       <h2 id="searchTitle">🔎 Buscar nos logs</h2>
       <button class="btn icon" data-close aria-label="Fechar">✕</button>
     </div>
-    <p class="muted small search-help">Procura em <strong>todos</strong> os logs da conta (não só erros): Lambdas, containers ECS, API Gateway, RDS…
-      Use para achar a origem de um id, pedido, e-mail, código de erro etc.</p>
+    <p class="muted small search-help">Por padrão procura nos <strong>erros já coletados</strong> (no texto do erro e no nome do serviço) — instantâneo e sem custo.
+      Para achar a origem de um id, pedido ou e-mail em <strong>qualquer</strong> linha de log, marque “Buscar em todos os logs (AWS)”.</p>
     <form id="searchForm" class="search-form" autocomplete="off">
       <input id="searchText" name="text" type="search" placeholder='Ex.: 387  ·  6a07773a50e4  ·  "Cliente não encontrado"' aria-label="Texto a buscar" required>
       <select name="range" aria-label="Período">
@@ -261,6 +261,16 @@
         <label class="check"><input type="checkbox" name="word"> Palavra inteira <span class="muted small">(387 não acha 13870)</span></label>
         <label class="check"><input type="checkbox" name="case"> Diferenciar maiúsculas</label>
         <label class="check"><input type="checkbox" name="regex"> Expressão regular</label>
+      </div>
+      <div class="search-scope">
+        <label class="check"><input type="checkbox" name="aws" id="searchAws"> <strong>Buscar em todos os logs (AWS)</strong>
+          <span class="muted small">— inclui logs que não são erro (Lambdas, containers, API Gateway…)</span></label>
+        <div class="aws-warning hidden" id="awsWarning" role="note">
+          <strong>⚠ A busca nos logs da AWS pode gerar custos.</strong>
+          O CloudWatch Logs Insights cobra cerca de <strong>US$ 0,005 por GB</strong> de log varrido: em contas pequenas e médias,
+          uma busca de 24h costuma custar frações de centavo e uma de 30 dias, alguns centavos — em contas com muito log, pode ser mais.
+          Também é mais lenta (de 5 s a 2 min). Para gastar menos, use um período menor ou preencha “Só log groups contendo…”.
+        </div>
       </div>
     </form>
     <div class="search-status" id="searchStatus"></div>
