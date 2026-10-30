@@ -18,11 +18,13 @@ const store = {
 
 // ------------------------------------------------------------------ utilidades
 async function api(path, opts = {}) {
+  const method = opts.method || "GET";
+  // POST sempre como JSON: o servidor recusa outros formatos (proteção contra CSRF)
   const res = await fetch(path, {
-    method: opts.method || "GET",
+    method,
     signal: opts.signal,
-    headers: opts.body ? { "Content-Type": "application/json" } : undefined,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    headers: method === "GET" ? undefined : { "Content-Type": "application/json" },
+    body: method === "GET" ? undefined : JSON.stringify(opts.body || {}),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

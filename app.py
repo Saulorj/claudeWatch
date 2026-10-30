@@ -341,6 +341,30 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(length) or b"{}")
 
+    def _cross_site(self) -> bool:
+        """Proteção contra CSRF: qualquer site aberto no navegador consegue mandar requisições para
+        127.0.0.1. Só aceitamos as que vêm do próprio painel."""
+        if self.headers.get("Sec-Fetch-Site") == "cross-site":
+            return True
+        origin = self.headers.get("Origin")
+        if origin is None:  # navegadores sempre mandam Origin em POST; sem ele é curl/script local
+            return False
+        port = self.server.server_address[1]
+        return origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+
+    def _reject_csrf(self, method: str) -> bool:
+        if self._cross_site():
+            log.warning("bloqueada requisição de outro site: %s %s (Origin=%s)",
+                        method, self.path, self.headers.get("Origin"))
+            self._send(403, {"error": "Requisição de outro site bloqueada."})
+            return True
+        # Exigir JSON força o navegador a pedir permissão (preflight) para requisições de outro site,
+        # e o painel nunca concede: um formulário ou fetch "simples" de fora não chega a executar.
+        if method == "POST" and self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
+            self._send(415, {"error": "Content-Type deve ser application/json."})
+            return True
+        return False
+
     def _static(self, path):
         rel = "index.html" if path in ("", "/") else path.lstrip("/")
         file = (WEB_DIR / rel).resolve()
@@ -357,6 +381,8 @@ class Handler(BaseHTTPRequestHandler):
         path = url.path
         if not path.startswith("/api/"):
             return self._static(path)
+        if self._reject_csrf("GET"):
+            return
         try:
             with db.connect() as conn:
                 if path == "/api/status":
@@ -408,6 +434,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if self._reject_csrf("POST"):
+            return
         try:
             if path == "/api/collect":
                 if collector is None:
