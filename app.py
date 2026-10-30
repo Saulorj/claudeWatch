@@ -35,6 +35,7 @@ EDITABLE_SETTINGS = {"interval_min", "first_lookback_hours", "auto_recover_hours
                      "group_exclude_regex", "group_include_regex"}
 
 collector: Collector | None = None
+DEMO = False
 
 
 # --------------------------------------------------------------------- consultas
@@ -187,6 +188,10 @@ def api_search(conn, body):
     if start >= end:
         raise ValueError("O início precisa ser antes do fim")
     t0 = time.time()
+    if collector is None:  # modo demonstração: busca no banco local
+        result = demo_search(conn, text, start, end, body)
+        result.update(start=start, end=end, elapsed_s=round(time.time() - t0, 1))
+        return result
     try:
         result = collector.search(conn, text, start, end, regex=bool(body.get("regex")), case=bool(body.get("case")),
                                   word=bool(body.get("word")), group_filter=(body.get("group") or "").strip())
@@ -194,6 +199,31 @@ def api_search(conn, body):
         raise ValueError(f"Regex inválida: {exc}")
     result.update(start=start, end=end, elapsed_s=round(time.time() - t0, 1))
     return result
+
+
+def demo_search(conn, text, start, end, body):
+    flags = 0 if body.get("case") else re.IGNORECASE
+    src = text if body.get("regex") else re.escape(text)
+    if body.get("word"):
+        src = rf"(?:{src})"
+    try:
+        rx = re.compile(src, flags)
+    except re.error as exc:
+        raise ValueError(f"Regex inválida: {exc}")
+    group_filter = (body.get("group") or "").lower()
+    items, by_group = [], {}
+    for r in conn.execute("SELECT ts, log_group, service, log_stream, message FROM events WHERE ts BETWEEN ? AND ? "
+                          "ORDER BY ts DESC", (start, end)):
+        if group_filter and group_filter not in r["log_group"].lower():
+            continue
+        if rx.search(r["message"]):
+            by_group[r["log_group"]] = by_group.get(r["log_group"], 0) + 1
+            if len(items) < 300:
+                items.append(dict(r))
+    groups = sorted(({"log_group": g, "service": fp.service_of(g), "kind": fp.kind_of(g), "n": n}
+                     for g, n in by_group.items()), key=lambda x: -x["n"])
+    searched = conn.execute("SELECT COUNT(*) FROM log_groups").fetchone()[0]
+    return {"items": items, "groups": groups, "total": sum(by_group.values()), "groups_searched": searched, "errors": []}
 
 
 def api_issues_new(conn, qs):
@@ -242,6 +272,7 @@ def api_status(conn):
         "db_path": str(DB_PATH),
         "groups_monitored": conn.execute("SELECT COUNT(*) FROM log_groups").fetchone()[0],
         "backfill": collector.backfill_status(conn) if collector else None,
+        "demo": DEMO,
         "last_window_end": int(s["last_window_end"]) if s.get("last_window_end") else None,
     }
 
@@ -361,7 +392,7 @@ class Handler(BaseHTTPRequestHandler):
                 m = re.fullmatch(r"/api/issue/([0-9a-f]{16})/prompt", path)
                 if m:
                     text = prompt_builder.build(
-                        conn, collector.logs, collector.account_id, m.group(1),
+                        conn, collector.logs if collector else None, collector.account_id if collector else None, m.group(1),
                         int(qs["event_id"]) if qs.get("event_id") else None, qs.get("mask", "1") == "1")
                     return self._send(200, {"prompt": text})
                 m = re.fullmatch(r"/api/event/(\d+)", path)
@@ -379,6 +410,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             if path == "/api/collect":
+                if collector is None:
+                    return self._send(409, {"error": "Modo demonstração: não há coleta na AWS."})
                 collector.trigger()
                 return self._send(202, {"ok": True})
             with db.connect() as conn:
@@ -392,6 +425,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, collector.backfill_status(conn))
                 if path == "/api/search":
                     return self._send(200, api_search(conn, self._body()))
+                if collector is None and path.startswith(("/api/search/", "/api/backfill")):
+                    b = self._body()
+                    if path == "/api/search/prompt":
+                        return self._send(200, {"prompt": prompt_builder.build_for_line(
+                            None, None, b["log_group"], b["log_stream"], int(b["ts"]), b.get("message", ""),
+                            b.get("text", ""), bool(b.get("mask", True)))})
+                    return self._send(200, {"context": "", "description": "modo demonstração: sem acesso à AWS"})
                 if path in ("/api/search/context", "/api/search/prompt"):
                     b = self._body()
                     group, stream, ts, msg = b["log_group"], b["log_stream"], int(b["ts"]), b.get("message", "")
@@ -465,6 +505,7 @@ def main():
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--check", action="store_true", help="só testa o acesso à AWS e sai")
+    parser.add_argument("--demo", action="store_true", help="abre com dados fictícios, sem acessar a AWS")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -472,14 +513,20 @@ def main():
     logging.getLogger("botocore").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-    ok = check_aws()
-    if args.check:
-        raise SystemExit(0 if ok else 1)
-
-    global collector
-    db.init()
-    collector = Collector()
-    collector.start()
+    global collector, DEMO, DB_PATH
+    if args.demo:
+        import demo
+        DEMO = True
+        DB_PATH = demo.build(DB_PATH.parent / "demo.db")
+        db.DB_PATH = DB_PATH
+        log.info("Modo demonstração: dados fictícios em %s (nada é lido da AWS)", DB_PATH)
+    else:
+        ok = check_aws()
+        if args.check:
+            raise SystemExit(0 if ok else 1)
+        db.init()
+        collector = Collector()
+        collector.start()
 
     server = ThreadingHTTPServer((HOST, args.port), Handler)
     url = f"http://{HOST}:{args.port}/"

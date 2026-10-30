@@ -348,7 +348,10 @@ async function pollStatus() {
     const c = s.collector || {};
     const run = s.last_run;
     $("appName").textContent = s.app_name;
-    $("envInfo").textContent = `CloudWatch · ${s.profile} · conta ${s.account || "…"} · ${s.region} · ${s.groups_monitored} log groups`;
+    $("envInfo").textContent = s.demo
+      ? `Modo demonstração · dados fictícios · ${s.groups_monitored} log groups`
+      : `CloudWatch · ${s.profile} · conta ${s.account || "…"} · ${s.region} · ${s.groups_monitored} log groups`;
+    $("collectNow").classList.toggle("hidden", !!s.demo);
 
     const sel = $("intervalSelect");
     const choices = [...new Set([...s.interval_choices, s.interval_min])].sort((a, b) => a - b);

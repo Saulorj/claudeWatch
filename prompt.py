@@ -45,6 +45,8 @@ def _cut(text: str, size: int) -> str:
 
 def fetch_context(logs_client, group: str, stream: str, ts: int, message: str) -> tuple[str, str]:
     """Busca as linhas ao redor do erro no próprio stream. Em Lambda, recorta a invocação inteira."""
+    if logs_client is None:
+        return "", "(modo demonstração: sem acesso à AWS para buscar o contexto)"
     resp = logs_client.get_log_events(logGroupName=group, logStreamName=stream, startTime=ts - 5 * 60_000,
                                       endTime=ts + 60_000, startFromHead=True, limit=2_000)
     events = resp["events"]

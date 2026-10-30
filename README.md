@@ -1,84 +1,137 @@
-# CloudWatch Monitor
+<div align="center">
 
-Painel **local** de erros do AWS CloudWatch — uma alternativa leve ao Datadog para acompanhar
-erros. Roda na sua máquina, coleta os logs de X em X minutos, guarda tudo em SQLite e mostra
-gráficos, issues agrupadas, alarmes, busca em todos os logs, relatório em PNG e um botão
-**✨ Gerar Prompt** que monta o diagnóstico completo de um erro para colar no Claude.
+# 📈 CloudWatch Monitor
 
-Nada é instalado na AWS: o monitor só **lê** logs e alarmes com as suas credenciais.
+**A lightweight, local error dashboard for AWS CloudWatch — a free alternative to Datadog for tracking errors.**
 
----
+Runs on your machine · reads your CloudWatch logs every few minutes · groups errors into issues ·
+charts, alerts, full-text log search, PNG reports and a **✨ Generate Prompt** button that hands the
+full error context to Claude (or any LLM) for diagnosis.
 
-## Início rápido
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![AWS read-only](https://img.shields.io/badge/AWS-read--only-orange)
+![No server needed](https://img.shields.io/badge/server-not%20needed-brightgreen)
 
-| Sistema | O que fazer |
-|---|---|
-| **Windows** | dois cliques em **`iniciar.bat`** |
-| **Linux / macOS** | no terminal, dentro da pasta: `chmod +x iniciar.sh` (só a 1ª vez) e `./iniciar.sh` |
+🇺🇸 English · [🇧🇷 Português](README.pt-BR.md)
 
-O inicializador faz tudo, em ordem, e explica cada passo:
+<img src="docs/screenshots/dashboard-dark.png" alt="Dashboard" width="900">
 
-1. **Python 3.10+** — verifica a versão; se faltar, instala (winget no Windows, Homebrew no
-   macOS, apt/dnf/pacman/zypper no Linux) ou abre a página de download.
-2. **Dependências** (`requirements.txt`) — verifica e instala o que faltar (inclusive o `pip`).
-3. **AWS CLI** — verifica e mostra a versão. É **opcional** (só é necessário para login SSO);
-   se faltar, oferece instalar.
-4. **Configuração** — na 1ª execução abre um **assistente no console** (veja abaixo).
-5. Abre o painel no navegador: **http://127.0.0.1:8765/**
-
-Nas próximas vezes ele só confere os requisitos (rápido) e abre o painel.
+</div>
 
 ---
 
-## O assistente de configuração
+## Why
 
-Roda sozinho na 1ª vez (ou a qualquer momento com `python configurar.py`) e grava as respostas
-no arquivo **`.env`**, na pasta do projeto.
+Paying for a full observability platform just to *see the errors* in your Lambdas and containers is
+overkill for many teams. CloudWatch already has the logs — it just doesn't make them easy to watch.
 
-**1. Acesso à AWS** — escolha uma opção:
+CloudWatch Monitor turns your existing CloudWatch Logs into an error dashboard you can leave open on a
+second screen. **Nothing is installed in AWS**, there's no server to host, and it only needs
+**read-only** credentials. Your data stays on your computer.
 
-| Opção | Quando usar |
+## Features
+
+| | |
 |---|---|
-| Usar um profile existente | já existe um profile do AWS CLI na máquina; o assistente lista todos |
-| **Cadastrar uma chave de acesso** | o caso mais comum. Cole o *Access Key ID* e o *Secret*; o assistente grava o profile em `~/.aws` (igual ao `aws configure`). **Não precisa do AWS CLI** |
-| Entrar com SSO | a empresa usa IAM Identity Center; o assistente instala o AWS CLI se faltar e abre o login no navegador |
-| Variáveis de ambiente | já existem `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` definidas |
-| “Não tenho chave — como consigo uma?” | mostra o passo a passo no console da AWS e salva a política de permissões em `iam-policy.json` para mandar ao administrador |
+| 🔄 **Automatic collection** | Every N minutes (1–60, configurable live) via CloudWatch Logs Insights across **all** log groups — Lambda, ECS, API Gateway, RDS, Glue… |
+| 🧩 **Smart grouping** | Similar errors become one **issue** (ids, numbers and timestamps ignored). Understands Python tracebacks split across lines, JSON logs (pino, structlog…), HTTP 5xx and timeouts |
+| 📊 **Interactive charts** | Errors over time by service, top services, categories. Click a bar or legend to filter; period from 1h to 30 days |
+| 🚨 **CloudWatch alarms** | Shows the state (OK / ALARM / no data) of the alarms already in your account |
+| ✨ **Generate Prompt** | Builds a ready-to-paste diagnosis prompt: full error, the **entire Lambda invocation** (or surrounding container lines), stats and related errors. Secrets masked by default |
+| 🔎 **Log search** | Find any text (an order id, an email, an error code) in every log group and see which service produced it, with context |
+| 🖼 **PNG report** | One click exports KPIs, charts, alarms and top errors with messages — great for chat or tickets |
+| 🔔 **Notifications** | Desktop notification for new issues and regressions |
+| ✅ **Workflow** | Resolve (reopens as *Regression* if it comes back) or Ignore (known noise) |
+| ⏪ **Gap recovery** | Was the app closed? Up to 24h is recovered automatically; longer gaps ask what to fetch — and run in the background |
+| 🧙 **Zero-config setup** | `iniciar.bat` / `iniciar.sh` checks and installs Python, dependencies and the AWS CLI, then a console wizard configures credentials (even without the AWS CLI) |
+| 🧪 **Demo mode** | `python app.py --demo` — try everything with fictional data, no AWS account needed |
 
-**2. Teste de conexão** — conecta na hora, mostra a conta e quantos log groups encontrou
-(Lambda, ECS, API Gateway…). Se algo falhar, explica o motivo e oferece a correção:
+## Screenshots
 
-| Problema | O que o assistente faz |
+| Issue detail | Generate Prompt |
 |---|---|
-| Erro de certificado SSL (antivírus/proxy inspecionando HTTPS) | no Windows, corrige sozinho montando os certificados a partir do repositório do sistema |
-| Sessão SSO expirada | oferece fazer o login de novo |
-| Falta permissão | diz o que pedir e salva `iam-policy.json` |
-| Chave inválida/expirada, região errada | permite trocar e testar de novo |
+| <img src="docs/screenshots/issue-detail.png" alt="Issue detail" width="440"> | <img src="docs/screenshots/prompt.png" alt="Prompt" width="440"> |
+| **Log search** | **Filtered view** |
+| <img src="docs/screenshots/search.png" alt="Log search" width="440"> | <img src="docs/screenshots/filtered.png" alt="Filtered" width="440"> |
+| **Light theme** | **PNG report** |
+| <img src="docs/screenshots/dashboard-light.png" alt="Light theme" width="440"> | <img src="docs/screenshots/report.png" alt="PNG report" width="440"> |
 
-**3. Preferências** — nome do painel, nome da empresa/sistema (vai nos prompts para o Claude),
-intervalo de coleta, quantas horas buscar na 1ª vez, dias de histórico local, quais log groups
-monitorar (todos ou só os que contêm um trecho do nome — mostra quantos casam) e a porta do
-painel (sugere uma livre).
+> All screenshots come from the built-in **demo mode** (a fictional store) — no real data.
 
 ---
 
-## O que você precisa ter
+## Quick start
 
-| Item | Detalhe |
+```bash
+git clone https://github.com/Saulorj/claudeWatch.git
+cd claudeWatch
+```
+
+| OS | Run |
 |---|---|
-| Computador | Windows 10/11, macOS ou Linux, com internet |
-| Conta AWS | com logs no CloudWatch Logs |
-| Credencial AWS **somente leitura** | chave de acesso de um usuário IAM, profile existente ou SSO (veja abaixo) |
-| Python 3.10+ | o inicializador instala se faltar |
-| AWS CLI | opcional (só para SSO) |
+| **Windows** | double-click **`iniciar.bat`** |
+| **macOS / Linux** | `./iniciar.sh` |
 
-Não precisa de banco de dados, Docker nem Node: o SQLite já vem com o Python. O painel carrega a
-biblioteca de gráficos (Chart.js) de um CDN, então o navegador precisa de internet.
+The launcher does everything, explaining each step:
 
-### Permissões na AWS (IAM)
+1. **Python 3.10+** — checks the version; installs it if missing (winget / Homebrew / apt, dnf, pacman, zypper).
+2. **Dependencies** — checks and installs `requirements.txt` (only `boto3`).
+3. **AWS CLI** — optional (only needed for SSO login); offers to install it.
+4. **Setup wizard** — first run only (see below).
+5. Opens the dashboard at **http://127.0.0.1:8765/**
 
-A credencial precisa apenas de **leitura**. Use a política gerenciada **`CloudWatchReadOnlyAccess`**
-ou esta política mínima (o assistente também a salva em `iam-policy.json`):
+### Just want to look around?
+
+```bash
+python app.py --demo
+```
+
+Opens the dashboard with a fictional store full of realistic errors. No AWS account required.
+
+---
+
+## The setup wizard
+
+Runs automatically on the first launch (or anytime with `python configurar.py`) and saves the answers
+to a local **`.env`** file.
+
+**1. AWS access** — pick one:
+
+| Option | When |
+|---|---|
+| Use an existing profile | lists every AWS CLI profile found on the machine |
+| **Register an access key** | most common. Paste the *Access Key ID* and *Secret*; the wizard writes the profile to `~/.aws` (same as `aws configure`). **No AWS CLI needed** |
+| SSO / IAM Identity Center | installs the AWS CLI if needed and opens the browser login |
+| Environment variables | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` already set |
+| “I don't have a key” | step-by-step guide for the AWS console + saves the IAM policy to `iam-policy.json` for your admin |
+
+**2. Connection test** — connects right away and shows the account and how many log groups were found.
+If something fails, it explains why and offers a fix: SSL errors caused by antivirus/corporate proxies
+are **fixed automatically on Windows**; expired SSO sessions can re-login; missing permissions are
+explained; wrong keys or region can be changed and retested.
+
+**3. Preferences** — dashboard name, company/system name (used in prompts), collection interval,
+first-run lookback, local history retention, which log groups to watch, and the port.
+
+---
+
+## Requirements
+
+| | |
+|---|---|
+| OS | Windows 10/11, macOS or Linux, with internet access |
+| AWS | an account with CloudWatch Logs |
+| Credentials | **read-only** (access key, existing profile or SSO) |
+| Python | 3.10+ (installed by the launcher if missing) |
+| AWS CLI | optional (SSO only) |
+
+No database server, Docker or Node.js — SQLite ships with Python. The UI loads Chart.js from a CDN.
+
+### IAM permissions
+
+Attach the AWS managed policy **`CloudWatchReadOnlyAccess`**, or this minimal policy:
 
 ```json
 {
@@ -102,208 +155,116 @@ ou esta política mínima (o assistente também a salva em `iam-policy.json`):
 }
 ```
 
-### Como criar a chave de acesso (para quem administra a AWS)
+**Creating an access key (for your AWS admin):** IAM → Users → *Create user* (no console access) →
+attach the policy above → *Security credentials* → *Create access key* → use case
+*Application running outside AWS* → copy the Access Key ID and Secret (shown only once).
 
-1. Console da AWS → **IAM** → **Usuários** → **Criar usuário** (ex.: `cloudwatch-monitor`),
-   sem acesso ao console.
-2. **Permissões** → *Anexar políticas diretamente* → `CloudWatchReadOnlyAccess` (ou a política acima).
-3. Abra o usuário → aba **Credenciais de segurança** → **Criar chave de acesso** → caso de uso
-   *Aplicação executada fora da AWS* → copie o **Access Key ID** e o **Secret** (o Secret só
-   aparece uma vez).
+### Cost
 
-### Custo
-
-O CloudWatch Logs Insights cobra US$ 0,005 por GB varrido. Para contas com dezenas de MB de log
-por dia, coletar a cada 5 min custa centavos por mês. Buscas manuais de 30 dias em contas grandes
-podem custar alguns centavos cada.
+CloudWatch Logs Insights charges **US$ 0.005 per GB scanned**. For accounts with tens of MB of logs per
+day, collecting every 5 minutes costs **cents per month**. A manual 30-day search on a large account may
+cost a few cents.
 
 ---
 
-## Configuração (`.env`)
+## Configuration (`.env`)
 
-O assistente cria o `.env`; dá para editar à mão (modelo comentado em **`.env.example`**).
-Variáveis de ambiente do sistema têm prioridade sobre o arquivo.
+Created by the wizard; can be edited by hand (commented template: [`.env.example`](.env.example)).
+Real environment variables take precedence.
 
-| Variável | Padrão | Para quê |
+| Variable | Default | Purpose |
 |---|---|---|
-| `MONITOR_AWS_PROFILE` | `AWS_PROFILE` ou credenciais padrão | profile do AWS CLI |
-| `MONITOR_AWS_REGION` | região do profile, senão `us-east-1` | região dos logs |
-| `MONITOR_CA_BUNDLE` | — | arquivo `.pem` extra (antivírus/proxy que inspeciona HTTPS) |
-| `MONITOR_APP_NAME` | `CloudWatch Monitor` | nome no painel e no relatório |
-| `MONITOR_SYSTEM_NAME` | — | nome da empresa/sistema citado nos prompts |
-| `MONITOR_INTERVAL_MIN` | `5` | intervalo de coleta inicial (min) |
-| `MONITOR_FIRST_LOOKBACK_HOURS` | `6` | horas buscadas na 1ª coleta |
-| `MONITOR_RETENTION_DAYS` | `30` | dias de histórico local |
-| `MONITOR_GROUP_INCLUDE` | — (todos) | regex: monitorar só log groups que casam |
-| `MONITOR_GROUP_EXCLUDE` | warmup, containerinsights… | regex: log groups ignorados |
-| `MONITOR_PORT` | `8765` | porta do painel |
-| `MONITOR_DB` | pasta de dados do usuário | caminho do banco SQLite |
+| `MONITOR_AWS_PROFILE` | `AWS_PROFILE` or default credentials | AWS CLI profile |
+| `MONITOR_AWS_REGION` | profile region, else `us-east-1` | region of your logs |
+| `MONITOR_CA_BUNDLE` | — | extra `.pem` for antivirus/proxy HTTPS inspection |
+| `MONITOR_APP_NAME` | `CloudWatch Monitor` | name shown in the UI and reports |
+| `MONITOR_SYSTEM_NAME` | — | company/system name used in prompts |
+| `MONITOR_INTERVAL_MIN` | `5` | initial collection interval (minutes) |
+| `MONITOR_FIRST_LOOKBACK_HOURS` | `6` | hours fetched on the first collection |
+| `MONITOR_RETENTION_DAYS` | `30` | days of local history |
+| `MONITOR_GROUP_INCLUDE` | — (all) | regex: only watch matching log groups |
+| `MONITOR_GROUP_EXCLUDE` | warmup, containerinsights… | regex: ignored log groups |
+| `MONITOR_PORT` | `8765` | dashboard port |
+| `MONITOR_DB` | user data folder | SQLite database path |
 
-Os valores de coleta são só os **iniciais**: depois, ajuste em **⚙ Configurações** no painel.
+Collection values are only the **initial** ones — afterwards, use **⚙ Settings** in the dashboard.
 
-**Várias contas AWS?** Copie a pasta do projeto uma vez por conta (cada uma com seu `.env`,
-`MONITOR_PORT` e `MONITOR_DB` diferentes) e rode cada uma.
+**Several AWS accounts?** Clone the project once per account, each with its own `.env`
+(different `MONITOR_PORT` and `MONITOR_DB`).
 
-### Onde ficam os dados
-
-| Sistema | Banco SQLite (padrão) |
+| OS | Default database location |
 |---|---|
 | Windows | `%LOCALAPPDATA%\cloudwatch-monitor\monitor.db` |
 | macOS | `~/Library/Application Support/cloudwatch-monitor/monitor.db` |
 | Linux | `~/.local/share/cloudwatch-monitor/monitor.db` |
 
-Fica fora da pasta do projeto de propósito: OneDrive, Dropbox e iCloud travam ou corrompem
-arquivos SQLite em uso. Para recomeçar do zero, feche o monitor e apague essa pasta.
-
-**Privacidade:** tudo fica na sua máquina. O painel só escuta em `127.0.0.1` (não fica acessível
-na rede). Nada é enviado ao Claude automaticamente — o prompt só sai se você copiar e colar.
+It lives outside the project folder on purpose: OneDrive, Dropbox and iCloud lock or corrupt SQLite
+files in use.
 
 ---
 
-## Usando o painel
+## Security & privacy
 
-- **Topo**: estado da coleta, intervalo (1 a 60 min), *Coletar agora*, **🔎 Buscar nos logs**, tema, ⚙.
-- **Filtros**: período (1h a 30 dias), serviço e categoria. Clique numa barra ou na legenda dos
-  gráficos para filtrar; clique de novo para limpar. O filtro ativo aparece em destaque no topo.
-- **Issues**: erros iguais agrupados (ids, números e horários são ignorados no agrupamento).
-  Clique para ver o log completo, as ocorrências e as ações:
-  - **✨ Gerar Prompt** — erro completo + a invocação inteira da Lambda (ou as linhas ao redor no
-    container) + estatísticas + erros relacionados. Tokens, senhas, e-mails e CPF são mascarados.
-  - **Resolver** — se o erro voltar, a issue reabre como *Regressão*.
-  - **Ignorar** — some dos gráficos (use para ruídos conhecidos).
-- **Notificações**: ative em ⚙ para receber aviso do sistema em issue nova ou regressão.
+- **Read-only**: the app never writes anything to AWS.
+- **Local only**: the dashboard binds to `127.0.0.1` — it is not reachable from the network.
+- **Credentials** stay in the standard `~/.aws` files; the project only stores the *profile name*.
+  `.env` is git-ignored.
+- **Nothing is sent to any AI automatically** — a prompt only leaves your machine if you copy and paste it.
+  Tokens, passwords, e-mails, CPF/CNPJ and connection strings are masked by default.
 
-### 🔎 Buscar nos logs
+## Start with your computer (optional)
 
-Botão no topo (ou tecla `/`). Procura **qualquer texto** em todos os log groups — não só erros —
-para descobrir a origem de um id, pedido, e-mail ou código de erro (ex.: “erro id 387”).
+- **Windows** — `Win + R` → `shell:startup` → create a shortcut to `iniciar.bat` (Run: *Minimized*).
+- **macOS** — a LaunchAgent running `iniciar.sh --no-browser` (example in the
+  [Portuguese README](README.pt-BR.md#iniciar-junto-com-o-computador-opcional)).
+- **Linux** — a `systemd --user` service running `iniciar.sh --no-browser` (same link).
 
-- Opções: período (15 min a 30 dias), só log groups contendo um trecho do nome, palavra inteira
-  (`387` não acha `13870`), diferenciar maiúsculas e expressão regular.
-- Resultado: ocorrências por serviço (clique para filtrar) e as 300 linhas mais recentes, com o
-  texto destacado. Em cada linha: **Ver contexto**, **✨ Gerar Prompt**, AWS Console e copiar.
-- Buscas de 24h levam de ~5 a 40 s; 30 dias podem levar 1–2 min.
+Run the launcher manually once first so the wizard can create the `.env`.
 
-### 🖼 Gerar relatório
+## Troubleshooting
 
-Baixa um **PNG** com o que está na tela — período, filtros, KPIs, os três gráficos, alarmes e as
-15 issues com mais ocorrências, cada uma com a última mensagem de erro (dados sensíveis
-mascarados). Bom para mandar no chat da equipe ou anexar em um ticket.
-
-### Alarmes CloudWatch
-
-São os alarmes que já existem na conta (criados no console do CloudWatch). Cada um vigia uma
-métrica — 5xx no load balancer, latência, hosts sem saúde, mensagens em fila de erro (DLQ) etc. —
-e vai para **ALARM** quando passa do limite. O monitor só **lê** o estado (OK, ALARME, Sem dados).
-
-### Quando o monitor ficou fechado
-
-| Situação | O que acontece |
+| Symptom | Fix |
 |---|---|
-| 1ª execução | busca as últimas `MONITOR_FIRST_LOOKBACK_HOURS` (padrão 6h) |
-| Fechado por até 24h | recupera tudo sozinho |
-| Fechado por mais tempo | o painel **pergunta**: tudo desde a última execução, últimas N horas, a partir de uma data, ou nada |
-| Falha de rede/AWS | não avança; a próxima coleta tenta a mesma janela de novo |
+| “Could not access AWS” on startup | run `python configurar.py` — it tests and tells you what to fix (`python app.py --check` only tests) |
+| `SSL: CERTIFICATE_VERIFY_FAILED` | antivirus/proxy inspecting HTTPS: run `python configurar.py` (auto-fix on Windows) or set `MONITOR_CA_BUNDLE` |
+| `AccessDenied` | missing permissions — see *IAM permissions* |
+| Expired SSO session | `aws sso login --profile YOUR_PROFILE` |
+| Port in use | change `MONITOR_PORT` in `.env` |
+| Empty dashboard | wait for the first collection (“collection ok” at the top) or widen the period |
+| Charts don't render | the browser must reach `cdn.jsdelivr.net` |
+| Linux: `ensurepip is not available` | `sudo apt install python3-venv` (the launcher offers it) |
 
-A recuperação roda em segundo plano (barra de progresso no topo) sem parar o monitoramento ao
-vivo e continua de onde parou se você fechar no meio. O limite é a retenção dos logs no CloudWatch.
+## How it works
+
+Every interval the collector runs **CloudWatch Logs Insights** queries over all log groups (50 per
+query), filtered by an error regex you can edit. Windows overlap by 3 minutes to catch late-ingested
+logs; duplicates are dropped. Multi-line tracebacks are merged and fetched in full from the log stream;
+INFO/DEBUG lines are ignored unless they signal a 5xx or a timeout. JSON logs have the error type and
+message extracted as the title. Similar errors become an issue (Timeout / HTTP 5xx / Fatal /
+Exception / Error), stored in SQLite and served by a small standard-library HTTP server.
+
+```
+iniciar.bat / iniciar.sh   launchers (requirements check + wizard + start)
+configurar.py              setup wizard  →  .env
+app.py                     local HTTP server + API  (--demo, --check, --port, --no-browser)
+collector.py               Logs Insights collection, alarms, gap recovery, search
+fingerprint.py             error classification and grouping
+prompt.py                  prompt builder (with secret masking)
+demo.py                    fictional data for demo mode
+db.py · config.py          SQLite schema · configuration
+web/                       dashboard (vanilla HTML/CSS/JS + Chart.js)
+```
+
+## Contributing
+
+Issues and pull requests are welcome. The project is maintained on a best-effort basis.
+
+## License
+
+[MIT](LICENSE) © Saulo Oliveira
 
 ---
 
-## Iniciar junto com o computador (opcional)
-
-**Windows** — `Win + R` → `shell:startup` → crie ali um atalho para o `iniciar.bat`
-(em *Propriedades* do atalho, *Executar: Minimizada*).
-
-**macOS** — crie `~/Library/LaunchAgents/com.cloudwatch-monitor.plist` (ajuste o caminho):
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.cloudwatch-monitor</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/SEU_USUARIO/caminho/do/projeto/iniciar.sh</string>
-    <string>--no-browser</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/cloudwatch-monitor.log</string>
-  <key>StandardErrorPath</key><string>/tmp/cloudwatch-monitor.log</string>
-</dict>
-</plist>
-```
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.cloudwatch-monitor.plist
-```
-
-**Linux (systemd, por usuário)** — crie `~/.config/systemd/user/cloudwatch-monitor.service`:
-
-```ini
-[Unit]
-Description=CloudWatch Monitor
-
-[Service]
-WorkingDirectory=%h/caminho/do/projeto
-ExecStart=%h/caminho/do/projeto/iniciar.sh --no-browser
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now cloudwatch-monitor
-journalctl --user -u cloudwatch-monitor -f     # ver o log
-```
-
-> Rode o `iniciar` manualmente uma vez antes (para o assistente criar o `.env`): sem console
-> interativo, o assistente não aparece.
-
----
-
-## Problemas comuns
-
-| Sintoma | Solução |
-|---|---|
-| Python não encontrado mesmo depois de instalar | feche e abra o terminal / rode o `iniciar` de novo; no Windows, reinstale marcando “Add python.exe to PATH” |
-| Falha ao instalar o `requirements.txt` | verifique internet/proxy; tente `python -m pip install --user -r requirements.txt` |
-| “Não consegui acessar a AWS” ao iniciar | rode `python configurar.py` — ele testa e diz o que corrigir |
-| `SSL: CERTIFICATE_VERIFY_FAILED` | antivírus ou proxy inspecionando HTTPS: rode `python configurar.py` (no Windows corrige sozinho) ou defina `MONITOR_CA_BUNDLE` |
-| `AccessDenied` | faltam permissões — veja *Permissões na AWS* |
-| Sessão SSO expirada | `aws sso login --profile NOME_DO_PROFILE` |
-| Porta ocupada | mude `MONITOR_PORT` no `.env` (ou rode `python configurar.py`) |
-| Painel vazio | aguarde a 1ª coleta (“coleta ok” no topo) ou aumente o período para 24h/7 dias |
-| Gráficos não aparecem | o navegador precisa acessar `cdn.jsdelivr.net` |
-| Linux: `ensurepip is not available` | `sudo apt install python3-venv` (o `iniciar.sh` oferece instalar) |
-| macOS/Linux: `Permission denied` no `iniciar.sh` | `chmod +x iniciar.sh` |
-
----
-
-## Arquivos
-
-| Arquivo | Função |
-|---|---|
-| `iniciar.bat` / `iniciar.sh` | verificam/instalam requisitos, chamam o assistente e abrem o painel |
-| `configurar.py` | assistente de configuração (gera o `.env`) |
-| `app.py` | servidor local + API (`python app.py --check` só testa o acesso à AWS) |
-| `collector.py` | coleta via Logs Insights, alarmes, recuperação de lacunas e busca |
-| `fingerprint.py` | classificação e agrupamento de erros |
-| `prompt.py` | gerador dos prompts para o Claude |
-| `db.py` / `config.py` | banco SQLite e configuração |
-| `web/` | painel (HTML, CSS, JS) |
-| `.env.example` | modelo de configuração comentado |
-
-## Como funciona (resumo técnico)
-
-A cada intervalo, o coletor roda consultas do **CloudWatch Logs Insights** em todos os log groups
-(50 por consulta), filtrando por uma regex de erro (editável em ⚙). Janelas se sobrepõem 3 min
-para não perder logs que chegam atrasados; duplicados são descartados. Tracebacks logados linha a
-linha são juntados e buscados completos no log stream; linhas INFO/DEBUG são ignoradas, exceto
-quando indicam HTTP 5xx ou timeout. Logs em JSON (pino, structlog…) têm o tipo e a mensagem do
-erro extraídos para o título. Erros iguais viram uma **issue** (Timeout / HTTP 5xx / Fatal /
-Exceção / Erro).
+<sub>Not affiliated with, endorsed by or sponsored by Amazon Web Services or Anthropic. “AWS” and
+“CloudWatch” are trademarks of Amazon.com, Inc.; “Claude” is a trademark of Anthropic, PBC — used here
+only to describe compatibility.</sub>
