@@ -42,7 +42,7 @@ async function runSearch(e) {
   };
   const status = $("searchStatus");
   if (body.text.length < 2) { status.className = "search-status error"; status.textContent = "Digite pelo menos 2 caracteres."; return; }
-  store.set("lastSearch", body);
+  store.set("lastSearch", { text: body.text, range: body.range });
 
   search.abort?.abort();
   search.abort = new AbortController();
@@ -78,8 +78,22 @@ function renderSearch() {
   const shown = r.items.length;
   const period = `${fmtTime(r.start)} → ${fmtTime(r.end)}`;
   if (!r.total) {
-    status.innerHTML = `Nada encontrado para “<strong>${esc(search.text)}</strong>” (${period}, ${r.groups_searched} log groups, ${r.elapsed_s}s).
-      Tente um período maior ou desmarque “palavra inteira”.`;
+    // Sem resultado: mostra o motivo (falha na AWS) e as opções que podem estar restringindo a busca
+    const f = $("searchForm").elements;
+    const active = [];
+    if (f.group.value.trim()) active.push(`só log groups contendo “${esc(f.group.value.trim())}”`);
+    if (f.word.checked) active.push("palavra inteira");
+    if (f.case.checked) active.push("diferenciar maiúsculas");
+    if (f.regex.checked) active.push("expressão regular");
+    if (r.errors.length) {
+      status.className = "search-status error";
+      status.innerHTML = `A busca falhou em ${r.errors.length} lote(s) de log groups: ${esc(r.errors[0])}`;
+    } else {
+      status.innerHTML = `Nada encontrado para “<strong>${esc(search.text)}</strong>” (${period}, ${r.groups_searched} log groups, ${r.elapsed_s}s).` +
+        (active.length
+          ? ` Opções ativas: ${active.join(", ")}. <button type="button" class="chip" id="clearSearchOpts">limpar opções e buscar de novo</button>`
+          : " Tente um período maior.");
+    }
     $("searchResults").classList.add("hidden");
   } else {
     status.innerHTML = `<strong>${nf.format(r.total)}</strong> ocorrência(s) em <strong>${r.groups.length}</strong> log group(s) · ${period} · ${r.elapsed_s}s` +
@@ -166,15 +180,19 @@ function bindSearch() {
       openSearch();
     }
   });
+  $("searchStatus").addEventListener("click", (e) => {
+    if (e.target.id !== "clearSearchOpts") return;
+    const f = $("searchForm").elements;
+    f.group.value = "";
+    f.word.checked = f.case.checked = f.regex.checked = false;
+    runSearch();
+  });
+  // Lembra só o texto e o período: filtros "esquecidos" de uma busca anterior faziam a próxima não achar nada
   const last = store.get("lastSearch", null);
   if (last) {
     const f = $("searchForm");
     f.elements.text.value = last.text || "";
     f.elements.range.value = last.range || "24h";
-    f.elements.group.value = last.group || "";
-    f.elements.word.checked = !!last.word;
-    f.elements.case.checked = !!last.case;
-    f.elements.regex.checked = !!last.regex;
   }
 }
 
