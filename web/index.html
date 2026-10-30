@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CloudWatch Monitor</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23d03b3b'/%3E%3Cpath d='M3 10l3-4 3 3 4-5' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div>
+      <div class="brand-name" id="appName">CloudWatch Monitor</div>
+      <div class="brand-sub" id="envInfo">CloudWatch · carregando…</div>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <div class="collector" id="collectorStatus" title="Estado da coleta">
+      <span class="dot"></span><span class="label">…</span>
+    </div>
+    <label class="field-inline">
+      <span>Coletar a cada</span>
+      <select id="intervalSelect" aria-label="Intervalo de coleta"></select>
+    </label>
+    <button class="btn primary" id="openSearch" title="Procurar qualquer texto em todos os logs (atalho: /)">🔎 Buscar nos logs</button>
+    <button class="btn" id="collectNow">↻ Coletar agora</button>
+    <button class="btn icon" id="themeToggle" title="Tema claro/escuro" aria-label="Alternar tema">◐</button>
+    <button class="btn icon" id="openSettings" title="Configurações" aria-label="Configurações">⚙</button>
+  </div>
+</header>
+
+<main>
+  <section class="banner hidden" id="backfillBanner" aria-live="polite"></section>
+
+  <section class="filters" aria-label="Filtros">
+    <div class="segmented" id="rangeSeg" role="tablist">
+      <button data-range="1h">1h</button>
+      <button data-range="6h">6h</button>
+      <button data-range="24h" class="active">24h</button>
+      <button data-range="7d">7 dias</button>
+      <button data-range="30d">30 dias</button>
+    </div>
+    <select id="serviceFilter" aria-label="Filtrar serviço"><option value="">Todos os serviços</option></select>
+    <select id="categoryFilter" aria-label="Filtrar categoria"><option value="">Todas as categorias</option></select>
+    <div class="active-filters" id="activeFilters" aria-label="Filtros ativos"></div>
+    <span class="spacer"></span>
+    <span class="muted small" id="lastRefresh"></span>
+    <button class="btn" id="btnReport" title="Baixa um PNG com os gráficos e erros da tela, com os filtros atuais">🖼 Gerar relatório</button>
+  </section>
+
+  <section class="kpis" id="kpis">
+    <div class="kpi"><div class="kpi-label">Erros no período</div><div class="kpi-value" id="kTotal">–</div><div class="kpi-delta" id="kDelta"></div></div>
+    <div class="kpi"><div class="kpi-label">Issues abertas</div><div class="kpi-value" id="kOpen">–</div><div class="kpi-delta muted" id="kRegress"></div></div>
+    <div class="kpi"><div class="kpi-label">Issues novas no período</div><div class="kpi-value" id="kNew">–</div></div>
+    <div class="kpi"><div class="kpi-label">Serviços com erro</div><div class="kpi-value" id="kServices">–</div></div>
+    <div class="kpi" id="kAlarmsTile"><div class="kpi-label">Alarmes disparados</div><div class="kpi-value" id="kAlarms">–</div><div class="kpi-delta muted" id="kAlarmsSub"></div></div>
+  </section>
+
+  <section class="grid-main">
+    <div class="card span-2">
+      <div class="card-head">
+        <h2>Erros ao longo do tempo</h2>
+        <span class="muted small">por serviço · top 5 + outros · clique numa barra ou na legenda para filtrar</span>
+      </div>
+      <div class="chart-box tall"><canvas id="timelineChart" aria-label="Erros ao longo do tempo"></canvas></div>
+      <div class="empty hidden" id="timelineEmpty">Nenhum erro no período 🎉</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Alarmes CloudWatch</h2><span class="muted small" id="alarmsCount"></span></div>
+      <ul class="alarms" id="alarmsList"></ul>
+    </div>
+  </section>
+
+  <section class="grid-two">
+    <div class="card">
+      <div class="card-head"><h2>Serviços com mais erros</h2><span class="muted small">clique para filtrar · de novo para limpar</span></div>
+      <div class="chart-box" id="servicesBox"><canvas id="servicesChart" aria-label="Serviços com mais erros"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Por categoria</h2><span class="muted small">clique para filtrar · de novo para limpar</span></div>
+      <div class="chart-box short"><canvas id="categoriesChart" aria-label="Erros por categoria"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head issues-head">
+      <h2>Issues</h2>
+      <div class="segmented small" id="statusSeg">
+        <button data-status="open" class="active">Abertas</button>
+        <button data-status="resolved">Resolvidas</button>
+        <button data-status="ignored">Ignoradas</button>
+        <button data-status="all">Todas</button>
+      </div>
+      <input type="search" id="search" placeholder="Buscar erro, serviço, log group…" aria-label="Buscar">
+      <select id="sortSelect" aria-label="Ordenar">
+        <option value="recent">Mais recentes</option>
+        <option value="count">Mais ocorrências</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="issues">
+        <thead><tr>
+          <th>Erro</th><th>Serviço</th><th>Categoria</th>
+          <th class="num">No período</th><th class="num">Total</th><th>Última vez</th><th>Primeira vez</th>
+        </tr></thead>
+        <tbody id="issuesBody"></tbody>
+      </table>
+      <div class="empty hidden" id="issuesEmpty">Nenhuma issue com esses filtros.</div>
+    </div>
+  </section>
+</main>
+
+<!-- Detalhe da issue -->
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-inner">
+    <div class="drawer-head">
+      <div class="drawer-title-wrap">
+        <div class="drawer-meta" id="dMeta"></div>
+        <h2 id="dTitle"></h2>
+      </div>
+      <button class="btn icon" id="closeDrawer" aria-label="Fechar">✕</button>
+    </div>
+    <div class="drawer-actions">
+      <button class="btn primary" id="btnPrompt">✨ Gerar Prompt</button>
+      <button class="btn" id="btnResolve">✓ Resolver</button>
+      <button class="btn" id="btnIgnore">⊘ Ignorar</button>
+      <button class="btn hidden" id="btnReopen">↺ Reabrir</button>
+      <a class="btn" id="btnConsole" target="_blank" rel="noopener">AWS Console ↗</a>
+    </div>
+    <dl class="facts" id="dFacts"></dl>
+    <div class="card-sub">
+      <h3>Ocorrências no período</h3>
+      <div class="chart-box short"><canvas id="issueChart" aria-label="Ocorrências da issue"></canvas></div>
+    </div>
+    <div class="card-sub">
+      <h3>Log completo <span class="muted small" id="dEventInfo"></span></h3>
+      <pre class="log" id="dMessage"></pre>
+    </div>
+    <div class="card-sub">
+      <h3>Ocorrências recentes <span class="muted small">(clique para ver o log)</span></h3>
+      <ul class="events" id="dEvents"></ul>
+    </div>
+  </div>
+</aside>
+<div class="backdrop" id="backdrop"></div>
+
+<!-- Prompt -->
+<div class="modal" id="promptModal" role="dialog" aria-modal="true" aria-labelledby="promptTitle">
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <h2 id="promptTitle">Prompt para o Claude</h2>
+      <button class="btn icon" data-close aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-tools">
+      <label class="check"><input type="checkbox" id="maskToggle" checked> Mascarar dados sensíveis (tokens, senhas, e-mails, CPF)</label>
+      <span class="muted small" id="promptInfo"></span>
+    </div>
+    <textarea id="promptText" spellcheck="false" readonly></textarea>
+    <div class="modal-foot">
+      <button class="btn" data-close>Fechar</button>
+      <button class="btn primary" id="copyPrompt">📋 Copiar prompt</button>
+    </div>
+  </div>
+</div>
+
+<!-- Configurações -->
+<div class="modal" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <h2 id="settingsTitle">Configurações</h2>
+      <button class="btn icon" data-close aria-label="Fechar">✕</button>
+    </div>
+    <form id="settingsForm" class="settings">
+      <div class="row3">
+        <label>Intervalo de coleta (min)<input type="number" name="interval_min" min="1" max="240"></label>
+        <label>Retenção local (dias)<input type="number" name="retention_days" min="1" max="365"></label>
+        <label>Recuperar sem perguntar até (h)<input type="number" name="auto_recover_hours" min="1" max="720"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="gap_always_recover"> Sempre recuperar tudo desde a última execução, sem perguntar (qualquer tamanho de lacuna)</label>
+      <label>Regex de erro <span class="muted small">(Logs Insights / RE2 — escape “/” como “\/”)</span>
+        <textarea name="error_regex" rows="3" spellcheck="false"></textarea></label>
+      <label>Regex de exclusão <span class="muted small">(linhas que casam aqui são descartadas)</span>
+        <textarea name="exclude_regex" rows="3" spellcheck="false"></textarea></label>
+      <div class="row2">
+        <label>Log groups — excluir (regex)<input name="group_exclude_regex" spellcheck="false"></label>
+        <label>Log groups — somente (regex, opcional)<input name="group_include_regex" spellcheck="false"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="ignore_low_level"> Ignorar linhas com nível explícito INFO/DEBUG que só citam “error”</label>
+      <label class="check"><input type="checkbox" id="notifToggle"> Notificação do Windows quando surgir issue nova ou regressão</label>
+      <div class="settings-msg" id="settingsMsg"></div>
+    </form>
+    <h3 class="sub">Últimas coletas</h3>
+    <div class="table-wrap runs-wrap">
+      <table class="runs"><thead><tr><th>Início</th><th>Tipo</th><th>Janela</th><th>Status</th><th class="num">Grupos</th><th class="num">Linhas</th><th class="num">Eventos novos</th><th class="num">Issues novas</th><th>Erro</th></tr></thead>
+        <tbody id="runsBody"></tbody></table>
+    </div>
+    <div class="modal-foot">
+      <span class="muted small" id="dbInfo"></span>
+      <button class="btn" data-close>Cancelar</button>
+      <button class="btn primary" id="saveSettings">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lacuna: monitor ficou fechado -->
+<div class="modal" id="gapModal" role="dialog" aria-modal="true" aria-labelledby="gapTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="gapTitle">O monitor ficou parado</h2>
+      <button class="btn icon" data-close aria-label="Fechar">✕</button>
+    </div>
+    <p class="gap-text" id="gapText"></p>
+    <form id="gapForm" class="gap-options">
+      <label class="opt"><input type="radio" name="mode" value="all" checked>
+        <span><strong>Tudo desde a última execução</strong> <em class="muted small">(recomendado)</em><br>
+        <span class="muted small" id="gapAllInfo"></span></span></label>
+      <label class="opt"><input type="radio" name="mode" value="hours">
+        <span><strong>Só as últimas</strong> <input type="number" name="hours" value="24" min="1" class="inline-num"> horas</span></label>
+      <label class="opt"><input type="radio" name="mode" value="from">
+        <span><strong>A partir de</strong> <input type="datetime-local" name="from" class="inline-dt"></span></label>
+      <label class="opt"><input type="radio" name="mode" value="skip">
+        <span><strong>Não recuperar</strong> <span class="muted small">— seguir só daqui para frente</span></span></label>
+      <label class="check remember"><input type="checkbox" name="remember"> Daqui em diante, sempre recuperar tudo sem perguntar</label>
+      <p class="muted small">A recuperação roda em segundo plano, em blocos de 6h; o monitoramento ao vivo continua normalmente.
+        O limite é a retenção dos logs no CloudWatch (30 dias na maioria dos grupos).</p>
+      <div class="settings-msg" id="gapMsg"></div>
+    </form>
+    <div class="modal-foot">
+      <button class="btn" data-close>Decidir depois</button>
+      <button class="btn primary" id="gapConfirm">Recuperar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Busca livre nos logs -->
+<div class="modal" id="searchModal" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
+  <div class="modal-box search-box">
+    <div class="modal-head">
+      <h2 id="searchTitle">🔎 Buscar nos logs</h2>
+      <button class="btn icon" data-close aria-label="Fechar">✕</button>
+    </div>
+    <p class="muted small search-help">Procura em <strong>todos</strong> os logs da conta (não só erros): Lambdas, containers ECS, API Gateway, RDS…
+      Use para achar a origem de um id, pedido, e-mail, código de erro etc.</p>
+    <form id="searchForm" class="search-form" autocomplete="off">
+      <input id="searchText" name="text" type="search" placeholder='Ex.: 387  ·  6a07773a50e4  ·  "Cliente não encontrado"' aria-label="Texto a buscar" required>
+      <select name="range" aria-label="Período">
+        <option value="15m">últimos 15 min</option>
+        <option value="1h">última 1 hora</option>
+        <option value="6h">últimas 6 horas</option>
+        <option value="24h" selected>últimas 24 horas</option>
+        <option value="3d">últimos 3 dias</option>
+        <option value="7d">últimos 7 dias</option>
+        <option value="30d">últimos 30 dias</option>
+      </select>
+      <input name="group" placeholder="Só log groups contendo… (opcional)" aria-label="Filtrar log groups" class="search-group">
+      <button class="btn primary" type="submit" id="searchGo">Buscar</button>
+      <div class="search-opts">
+        <label class="check"><input type="checkbox" name="word"> Palavra inteira <span class="muted small">(387 não acha 13870)</span></label>
+        <label class="check"><input type="checkbox" name="case"> Diferenciar maiúsculas</label>
+        <label class="check"><input type="checkbox" name="regex"> Expressão regular</label>
+      </div>
+    </form>
+    <div class="search-status" id="searchStatus"></div>
+    <div class="search-results hidden" id="searchResults">
+      <div class="search-groups" id="searchGroups"></div>
+      <ul class="search-list" id="searchList"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="app.js"></script>
+<script src="report.js"></script>
+<script src="search.js"></script>
+</body>
+</html>

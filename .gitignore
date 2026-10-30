@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- CloudWatch Monitor ---
+# configuração local (credenciais/caminhos desta máquina)
+.env
+# banco SQLite local
+*.db
+*.db-wal
+*.db-shm
+# gerados localmente pelo assistente
+iam-policy.json
+*.pem
